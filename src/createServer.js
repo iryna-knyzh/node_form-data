@@ -5,9 +5,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const querystring = require('node:querystring');
 
+const dataPath = path.resolve(__dirname, '../db/expense.json');
+
 function createServer() {
   return http.createServer((req, res) => {
-    /* ---------- GET: HTML form ---------- */
+    /* ---------- GET FORM ---------- */
     if (req.method === 'GET' && req.url === '/') {
       res.statusCode = 200;
       res.setHeader('Content-Type', 'text/html');
@@ -25,6 +27,7 @@ function createServer() {
       return;
     }
 
+    /* ---------- ONLY POST /add-expense ---------- */
     if (req.method !== 'POST' || req.url !== '/add-expense') {
       res.statusCode = 404;
       res.end('Not Found');
@@ -38,7 +41,6 @@ function createServer() {
 
     req.on('end', () => {
       const body = Buffer.concat(chunks).toString('utf-8');
-      const dataPath = path.resolve(__dirname, '../db/expense.json');
 
       let expense;
 
@@ -50,30 +52,56 @@ function createServer() {
         }
       } catch {
         res.statusCode = 400;
-        res.end('Invalid data');
+        res.end('<h2>Invalid data</h2>');
 
         return;
       }
 
-      // validation
       if (!expense.date || !expense.title || !expense.amount) {
         res.statusCode = 400;
-        res.end('Missing required fields');
+        res.setHeader('Content-Type', 'text/html');
+        res.end('<h2>Missing required fields</h2>');
 
         return;
       }
 
-      fs.writeFile(dataPath, JSON.stringify(expense), (err) => {
-        if (err) {
-          res.statusCode = 500;
-          res.end('Server error');
+      /* ---------- READ EXISTING FILE ---------- */
+      fs.readFile(dataPath, 'utf-8', (readErr, fileData) => {
+        let expenses = [];
 
-          return;
+        if (!readErr && fileData) {
+          try {
+            expenses = JSON.parse(fileData);
+          } catch {
+            expenses = [];
+          }
         }
 
-        res.statusCode = 200;
-        res.setHeader('Content-Type', 'application/json');
-        res.end(JSON.stringify(expense));
+        if (!Array.isArray(expenses)) {
+          expenses = [];
+        }
+
+        expenses.push(expense);
+
+        /* ---------- WRITE UPDATED ARRAY ---------- */
+        fs.writeFile(
+          dataPath,
+          JSON.stringify(expenses, null, 2),
+          (writeErr) => {
+            if (writeErr) {
+              res.statusCode = 500;
+              res.end('<h2>Server error</h2>');
+
+              return;
+            }
+
+            /* ---------- HTML RESPONSE ---------- */
+            res.statusCode = 200;
+            res.setHeader('Content-Type', 'text/html');
+
+            res.end(JSON.stringify(expense, null, 2));
+          },
+        );
       });
     });
   });
